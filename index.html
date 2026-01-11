@@ -1303,10 +1303,25 @@
                         </div>
 
                         <div className="share-link-box">
-                            <p style={{ marginBottom: '12px', fontWeight: 600 }}>Share this link:</p>
-                            <div className="share-link">{shareLink}</div>
+                            <p style={{ marginBottom: '12px', fontWeight: 600 }}>Message to send:</p>
+                            <div style={{ 
+                                background: 'var(--cream)', 
+                                padding: '16px', 
+                                borderRadius: '8px', 
+                                marginBottom: '16px',
+                                fontFamily: 'monospace',
+                                fontSize: '13px',
+                                whiteSpace: 'pre-wrap',
+                                border: '2px solid rgba(139, 157, 131, 0.3)'
+                            }}>
+                                {`Hello Mahjong Ladies! It's time to schedule our games for the ${weekName}.
+
+Please click the link below to let me know your availability:
+
+${shareLink}`}
+                            </div>
                             <button className="btn btn-primary" onClick={copyLink}>
-                                📋 Copy Link
+                                📋 Copy Link & Message
                             </button>
                         </div>
 
@@ -1589,7 +1604,7 @@
                                         borderLeft: '3px solid var(--terracotta)',
                                         fontSize: '14px'
                                     }}>
-                                        <strong>📝 Note:</strong> We had 5 available. I eliminated {adjustment.removedPlayer.split(' ')[0]} because {adjustment.sessionCount === 0 ? 'they would have the fewest conflicts' : adjustment.sessionCount >= adjustment.desiredCount ? `they already have ${adjustment.sessionCount} sessions (wanted ${adjustment.desiredCount})` : `they have ${adjustment.sessionCount} of their desired ${adjustment.desiredCount} sessions`}.
+                                        <strong>📝 Note:</strong> We had 5 available. I eliminated {adjustment.removedPlayer.split(' ')[0]} because {adjustment.sessionCount === 0 ? 'they would have the fewest conflicts' : `they already have ${adjustment.sessionCount} session${adjustment.sessionCount === 1 ? '' : 's'} (wanted ${adjustment.desiredCount})`}.
                                     </div>
                                 )}
                                 
