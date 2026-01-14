@@ -843,6 +843,11 @@
             const loadResponses = () => {
                 const data = loadFromStorage(`week_${weekId}`);
                 if (data) {
+                    // Check if there are time slots - if not, don't show optimization
+                    if (!data.timeSlots || data.timeSlots.length === 0) {
+                        alert('Please add time slots first before viewing responses.');
+                        return;
+                    }
                     calculateOptimization(data);
                     setStep(3);
                 }
