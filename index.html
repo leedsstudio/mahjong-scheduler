@@ -1153,6 +1153,10 @@
                                                 setWeekName(data.name);
                                                 setTimeSlots(data.timeSlots);
                                                 setPlayers(data.players);
+                                                // Reset hosting status - Martha is editing so she can change this
+                                                setMarthaHosting(true);
+                                                setSubstituteHost('');
+                                                setHostAddress('');
                                                 setShowCreateForm(true);
                                                 setStep(1);
                                             }
@@ -1558,6 +1562,10 @@ ${shareLink}`;
                                             setWeekName(data.name);
                                             setTimeSlots(data.timeSlots);
                                             setPlayers(data.players);
+                                            // Reset hosting status
+                                            setMarthaHosting(true);
+                                            setSubstituteHost('');
+                                            setHostAddress('');
                                             setShowCreateForm(true);
                                             setStep(1);
                                         }
@@ -1602,6 +1610,10 @@ ${shareLink}`;
                                             setWeekName(data.name);
                                             setTimeSlots(data.timeSlots);
                                             setPlayers(data.players);
+                                            // Reset hosting status
+                                            setMarthaHosting(true);
+                                            setSubstituteHost('');
+                                            setHostAddress('');
                                             setShowCreateForm(true);
                                             setStep(1);
                                         }
