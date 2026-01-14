@@ -922,45 +922,60 @@
 
                     // Handle the 5-player problem: reduce to 4
                     if (count === 5) {
-                        // Find the player to remove based on:
-                        // 1. How many times they're already scheduled
-                        // 2. How many times they want to play
-                        // Remove the player who has the best "satisfaction ratio"
-                        const nonMarthaPlayers = available.filter(p => p.id !== 'martha');
+                        // PRIORITY 1: Check if anyone hasn't played yet (sessionCount = 0)
+                        // If so, Martha sits out to let them play
+                        const zeroSessionPlayers = available.filter(p => 
+                            p.id !== 'martha' && (playerSessionCount[p.id] || 0) === 0
+                        );
                         
-                        const playerToRemove = nonMarthaPlayers.reduce((candidate, player) => {
-                            const playerScheduled = playerSessionCount[player.id] || 0;
-                            const playerDesired = player.desiredSessions || 1;
-                            const candidateScheduled = playerSessionCount[candidate.id] || 0;
-                            const candidateDesired = candidate.desiredSessions || 1;
+                        if (zeroSessionPlayers.length > 0) {
+                            // Someone hasn't played yet - Martha sits out
+                            removedPlayer = martha;
+                            available = available.filter(p => p.id !== 'martha');
+                            count = available.length;
                             
-                            // Calculate how "satisfied" each player already is
-                            // If someone wanted 4 sessions and has 2, they're 50% satisfied
-                            // If someone wanted 1 session and has 1, they're 100% satisfied
-                            const playerSatisfaction = playerScheduled / playerDesired;
-                            const candidateSatisfaction = candidateScheduled / candidateDesired;
+                            fivePlayerAdjustments.push({
+                                session: slotAnalysis.slot,
+                                removedPlayer: 'Martha',
+                                sessionCount: playerSessionCount['martha'] || 0,
+                                desiredCount: marthaPreference || 2,
+                                reason: `Martha sat out so ${zeroSessionPlayers[0].name} could play their first session`
+                            });
+                        } else {
+                            // Everyone has played at least once
+                            // Remove the player who is most "satisfied"
+                            const nonMarthaPlayers = available.filter(p => p.id !== 'martha');
                             
-                            // Remove the player who is MORE satisfied (closer to their goal)
-                            // If tied, remove the one with more absolute sessions
-                            if (Math.abs(playerSatisfaction - candidateSatisfaction) < 0.1) {
-                                return playerScheduled > candidateScheduled ? player : candidate;
-                            }
-                            return playerSatisfaction > candidateSatisfaction ? player : candidate;
-                        });
-                        
-                        removedPlayer = playerToRemove;
-                        available = available.filter(p => p.id !== playerToRemove.id);
-                        count = available.length;
-                        
-                        const scheduledCount = playerSessionCount[playerToRemove.id] || 0;
-                        const desiredCount = playerToRemove.desiredSessions || 1;
-                        
-                        fivePlayerAdjustments.push({
-                            session: slotAnalysis.slot,
-                            removedPlayer: playerToRemove.name,
-                            sessionCount: scheduledCount,
-                            desiredCount: desiredCount
-                        });
+                            const playerToRemove = nonMarthaPlayers.reduce((candidate, player) => {
+                                const playerScheduled = playerSessionCount[player.id] || 0;
+                                const playerDesired = player.desiredSessions || 1;
+                                const candidateScheduled = playerSessionCount[candidate.id] || 0;
+                                const candidateDesired = candidate.desiredSessions || 1;
+                                
+                                const playerSatisfaction = playerScheduled / playerDesired;
+                                const candidateSatisfaction = candidateScheduled / candidateDesired;
+                                
+                                // Remove the player who is MORE satisfied
+                                if (Math.abs(playerSatisfaction - candidateSatisfaction) < 0.1) {
+                                    return playerScheduled > candidateScheduled ? player : candidate;
+                                }
+                                return playerSatisfaction > candidateSatisfaction ? player : candidate;
+                            });
+                            
+                            removedPlayer = playerToRemove;
+                            available = available.filter(p => p.id !== playerToRemove.id);
+                            count = available.length;
+                            
+                            const scheduledCount = playerSessionCount[playerToRemove.id] || 0;
+                            const desiredCount = playerToRemove.desiredSessions || 1;
+                            
+                            fivePlayerAdjustments.push({
+                                session: slotAnalysis.slot,
+                                removedPlayer: playerToRemove.name,
+                                sessionCount: scheduledCount,
+                                desiredCount: desiredCount
+                            });
+                        }
                     }
 
                     const tables = [];
@@ -1604,8 +1619,7 @@ ${shareLink}`}
                                         borderLeft: '3px solid var(--terracotta)',
                                         fontSize: '14px'
                                     }}>
-                                        <strong>📝 Note:</strong> We had 5 available. I eliminated {adjustment.removedPlayer.split(' ')[0]} because {(() => {
-                                            // Count how many total sessions this player ended up with
+                                        <strong>📝 Note:</strong> We had 5 available. {adjustment.reason ? adjustment.reason : `I eliminated ${adjustment.removedPlayer.split(' ')[0]} because ${(() => {
                                             const playerName = adjustment.removedPlayer;
                                             let finalCount = 0;
                                             finalPlan.sessions.forEach(s => {
@@ -1621,7 +1635,7 @@ ${shareLink}`}
                                             } else {
                                                 return `they will have ${finalCount} session${finalCount === 1 ? '' : 's'} of their desired ${adjustment.desiredCount}`;
                                             }
-                                        })()}.
+                                        })()}`}.
                                     </div>
                                 )}
                                 
