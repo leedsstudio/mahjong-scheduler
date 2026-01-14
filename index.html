@@ -620,38 +620,11 @@
             useEffect(() => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const id = urlParams.get('week');
-                const isSubHost = urlParams.get('host') === 'substitute';
                 
                 if (id) {
                     setWeekId(id);
-                    
-                    // Always load data first
-                    const data = loadFromStorage(`week_${id}`);
-                    
-                    // If this is a substitute host link and the week needs setup
-                    if (isSubHost && data && data.needsSubstituteSetup === true) {
-                        setView('martha');
-                        setShowCreateForm(true);
-                        setWeekName(data.name || '');
-                        setMarthaHosting(true); // The substitute host IS hosting
-                        setSubstituteHost('');
-                        setHostAddress(data.substituteAddress || ''); // Load existing address if any
-                        // Pre-fill any existing data if they're coming back
-                        if (data.timeSlots && data.timeSlots.length > 0) {
-                            setTimeSlots(data.timeSlots);
-                        }
-                        if (data.players && data.players.length > 0) {
-                            setPlayers(data.players);
-                        }
-                        setLoading(false);
-                    } else {
-                        // Normal player view
-                        setView('player');
-                        if (data) {
-                            setWeekData(data);
-                        }
-                        setLoading(false);
-                    }
+                    setView('player');
+                    loadWeekData(id);
                 } else {
                     setView('martha');
                     setLoading(false);
@@ -700,9 +673,6 @@
             const [showCreateForm, setShowCreateForm] = useState(false);
             const [weekName, setWeekName] = useState('');
             const [timeSlots, setTimeSlots] = useState([{ id: generateId(), day: '', startTime: '', endTime: '' }]);
-            const [marthaHosting, setMarthaHosting] = useState(true);
-            const [substituteHost, setSubstituteHost] = useState('');
-            const [hostAddress, setHostAddress] = useState(''); // For substitute host to fill in
             const [players, setPlayers] = useState([
                 'Ann Roberts',
                 'Courtney Klinge Prosnitz',
@@ -753,71 +723,18 @@
 
             const createWeek = () => {
                 const id = weekId || generateId();
-                const existingData = loadFromStorage(`week_${id}`);
-                
-                // If this is a substitute host completing setup
-                if (existingData?.needsSubstituteSetup) {
-                    const validSlots = timeSlots.filter(s => s.day && s.startTime && s.endTime);
-                    
-                    const weekData = {
-                        ...existingData,
-                        timeSlots: validSlots,
-                        players: players,
-                        marthaHosting: false, // Keep Martha as not hosting
-                        substituteAddress: hostAddress, // Save the address the substitute host entered
-                        needsSubstituteSetup: false, // Mark setup as complete
-                        updatedAt: new Date().toISOString()
-                    };
-
-                    saveToStorage(`week_${id}`, weekData);
-                    
-                    const link = `${window.location.href.split('?')[0]}?week=${id}`;
-                    setShareLink(link);
-                    setWeekId(id);
-                    setStep(2);
-                    return;
-                }
-                
-                // If Martha is not hosting, create a minimal week record for the substitute host
-                if (!marthaHosting) {
-                    const weekData = {
-                        id: id,
-                        name: weekName,
-                        timeSlots: existingData?.timeSlots || [],
-                        players: existingData?.players || players, // Use current players list as default
-                        marthaHosting: false,
-                        substituteHost: substituteHost,
-                        substituteAddress: existingData?.substituteAddress || '', // Will be filled by substitute host
-                        responses: existingData?.responses || {},
-                        createdAt: existingData?.createdAt || new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        needsSubstituteSetup: true
-                    };
-
-                    saveToStorage(`week_${id}`, weekData);
-                    
-                    const link = `${window.location.href.split('?')[0]}?week=${id}&host=substitute`;
-                    setShareLink(link);
-                    setWeekId(id);
-                    setStep(2);
-                    return;
-                }
-                
-                // Normal flow when Martha is hosting
                 const validSlots = timeSlots.filter(s => s.day && s.startTime && s.endTime);
+                
+                const existingData = loadFromStorage(`week_${id}`);
                 
                 const weekData = {
                     id: id,
                     name: weekName,
                     timeSlots: validSlots,
                     players: players,
-                    marthaHosting: marthaHosting,
-                    substituteHost: null,
-                    substituteAddress: null,
                     responses: existingData?.responses || {},
                     createdAt: existingData?.createdAt || new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    needsSubstituteSetup: false
+                    updatedAt: new Date().toISOString()
                 };
 
                 saveToStorage(`week_${id}`, weekData);
@@ -831,11 +748,7 @@
             };
 
             const copyLink = () => {
-                const weekData = loadFromStorage(`week_${weekId}`);
-                const hostMessage = weekData?.marthaHosting === false && weekData?.substituteHost 
-                    ? `\n\nMartha's away this week, so we'll play at ${weekData.substituteHost}'s house${weekData.substituteAddress ? ` - ${weekData.substituteAddress}` : ''}.`
-                    : '';
-                const message = `Hello Mahjong Ladies! It's time to schedule our games for the ${weekName}.${hostMessage}\n\nPlease click the link below to let me know your availability:\n\n${shareLink}`;
+                const message = `Hello Mahjong Ladies! It's time to schedule our games for the ${weekName}.\n\nPlease click the link below to let me know your availability:\n\n${shareLink}`;
                 navigator.clipboard.writeText(message);
                 alert('Message with link copied to clipboard!');
             };
@@ -843,11 +756,6 @@
             const loadResponses = () => {
                 const data = loadFromStorage(`week_${weekId}`);
                 if (data) {
-                    // Check if there are time slots - if not, don't show optimization
-                    if (!data.timeSlots || data.timeSlots.length === 0) {
-                        alert('Please add time slots first before viewing responses.');
-                        return;
-                    }
                     calculateOptimization(data);
                     setStep(3);
                 }
@@ -972,8 +880,7 @@
             const selectSessions = (count) => {
                 setMarthaPreference(count);
                 const selectedSlots = optimization.slotAnalysis.slice(0, count);
-                const weekData = loadFromStorage(`week_${weekId}`);
-                const result = assignPlayersToSessions(selectedSlots, weekData?.marthaHosting !== false);
+                const result = assignPlayersToSessions(selectedSlots);
                 
                 // Sort sessions chronologically by day of week
                 const dayOrder = { 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7 };
@@ -991,17 +898,17 @@
                 setStep(4);
             };
 
-            const assignPlayersToSessions = (selectedSlots, marthaHosting = true) => {
+            const assignPlayersToSessions = (selectedSlots) => {
                 const playerSessionCount = {};
                 const assignments = [];
                 const fivePlayerAdjustments = []; // Track when we remove someone due to 5-player problem
                 
-                // Add Martha as a player only if she's hosting
+                // Add Martha as a player (she hosts so she always plays)
                 const martha = { id: 'martha', name: 'Martha', desiredSessions: 10 };
 
                 selectedSlots.forEach((slotAnalysis, sessionIdx) => {
-                    // Include Martha only if she's hosting
-                    let available = marthaHosting ? [martha, ...slotAnalysis.available] : [...slotAnalysis.available];
+                    // Martha is always in the session since she's hosting
+                    let available = [martha, ...slotAnalysis.available];
                     
                     available.sort((a, b) => {
                         const aCount = playerSessionCount[a.id] || 0;
@@ -1158,10 +1065,6 @@
                                                 setWeekName(data.name);
                                                 setTimeSlots(data.timeSlots);
                                                 setPlayers(data.players);
-                                                // Reset hosting status - Martha is editing so she can change this
-                                                setMarthaHosting(true);
-                                                setSubstituteHost('');
-                                                setHostAddress('');
                                                 setShowCreateForm(true);
                                                 setStep(1);
                                             }
@@ -1245,72 +1148,8 @@
                         </div>
 
                         <div className="form-group">
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={!marthaHosting}
-                                    onChange={(e) => setMarthaHosting(!e.target.checked)}
-                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                />
-                                <span>I cannot host any games this week</span>
-                            </label>
-                        </div>
-
-                        {!marthaHosting && (
-                            <div className="form-group">
-                                <label>Who will host instead?</label>
-                                <select
-                                    value={substituteHost}
-                                    onChange={(e) => setSubstituteHost(e.target.value)}
-                                    style={{ 
-                                        padding: '12px 16px',
-                                        border: '2px solid rgba(139, 157, 131, 0.3)',
-                                        borderRadius: '8px',
-                                        fontFamily: 'DM Sans, sans-serif',
-                                        fontSize: '15px',
-                                        background: 'var(--cream)',
-                                        color: 'var(--charcoal)',
-                                        width: '100%'
-                                    }}
-                                >
-                                    <option value="">Select a player...</option>
-                                    {players.map(player => (
-                                        <option key={player.id} value={player.name}>{player.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                        
-                        {(() => {
-                            const data = weekId ? loadFromStorage(`week_${weekId}`) : null;
-                            return data?.needsSubstituteSetup && (
-                                <div className="form-group">
-                                    <label>Your Address</label>
-                                    <input
-                                        type="text"
-                                        value={hostAddress}
-                                        onChange={(e) => setHostAddress(e.target.value)}
-                                        placeholder="e.g., 6 Presidio Terrace"
-                                        style={{ 
-                                            padding: '12px 16px',
-                                            border: '2px solid rgba(139, 157, 131, 0.3)',
-                                            borderRadius: '8px',
-                                            fontFamily: 'DM Sans, sans-serif',
-                                            fontSize: '15px',
-                                            background: 'var(--cream)',
-                                            color: 'var(--charcoal)',
-                                            width: '100%'
-                                        }}
-                                    />
-                                </div>
-                            );
-                        })()}
-
-                        {marthaHosting && (
-                            <>
-                                <div className="form-group">
-                                    <label>Your Available Time Slots</label>
-                                    {timeSlots.map((slot) => (
+                            <label>Your Available Time Slots</label>
+                            {timeSlots.map((slot) => (
                                 <div key={slot.id} className="time-slot-row">
                                     <select
                                         value={slot.day}
@@ -1437,13 +1276,11 @@
                                 </button>
                             </div>
                         </div>
-                            </>
-                        )}
 
                         <button
                             className="btn btn-primary"
                             onClick={createWeek}
-                            disabled={!weekName || (marthaHosting && timeSlots.every(s => !s.day)) || (!marthaHosting && !substituteHost)}
+                            disabled={!weekName || timeSlots.every(s => !s.day)}
                         >
                             {weekId ? 'Update Schedule' : 'Create Schedule & Generate Link'}
                         </button>
@@ -1454,64 +1291,6 @@
             }
 
             if (step === 2) {
-                const weekData = loadFromStorage(`week_${weekId}`);
-                const isSubstituteHostSetup = weekData?.needsSubstituteSetup;
-                
-                if (isSubstituteHostSetup) {
-                    // Special screen for when Martha is sending link to substitute host
-                    return (
-                        <div className="card">
-                            <div className="card-header">
-                                <span className="step-number">2</span>
-                                Send to {weekData.substituteHost}
-                            </div>
-
-                            <div className="alert alert-info">
-                                Send this link to {weekData.substituteHost} so they can set up the schedule.
-                            </div>
-
-                            <div className="share-link-box">
-                                <p style={{ marginBottom: '12px', fontWeight: 600 }}>Message to send to {weekData.substituteHost}:</p>
-                                <div style={{ 
-                                    background: 'var(--cream)', 
-                                    padding: '16px', 
-                                    borderRadius: '8px', 
-                                    marginBottom: '16px',
-                                    fontFamily: 'monospace',
-                                    fontSize: '13px',
-                                    whiteSpace: 'pre-wrap',
-                                    border: '2px solid rgba(139, 157, 131, 0.3)'
-                                }}>
-                                    {`Hi ${weekData.substituteHost}! Thanks for hosting mahjong this week. 
-
-Here's a link for you to start the scheduling process:
-
-${shareLink}
-
-Let me know if you have any questions!`}
-                                </div>
-                                <button 
-                                    className="btn btn-primary" 
-                                    onClick={() => {
-                                        const message = `Hi ${weekData.substituteHost}! Thanks for hosting mahjong this week. \n\nHere's a link for you to start the scheduling process:\n\n${shareLink}\n\nLet me know if you have any questions!`;
-                                        navigator.clipboard.writeText(message);
-                                        alert('Message copied to clipboard!');
-                                    }}
-                                >
-                                    📋 Copy Link & Message
-                                </button>
-                            </div>
-
-                            <div style={{ marginTop: '32px', textAlign: 'center' }}>
-                                <p style={{ marginBottom: '16px', color: 'var(--sage)' }}>
-                                    Once {weekData.substituteHost} sets up the times and players respond, you can check back to see the schedule.
-                                </p>
-                            </div>
-                        </div>
-                    );
-                }
-                
-                // Normal flow when Martha is hosting
                 return (
                     <div className="card">
                         <div className="card-header">
@@ -1535,16 +1314,11 @@ Let me know if you have any questions!`}
                                 whiteSpace: 'pre-wrap',
                                 border: '2px solid rgba(139, 157, 131, 0.3)'
                             }}>
-                                {(() => {
-                                    const hostMessage = weekData?.marthaHosting === false && weekData?.substituteHost 
-                                        ? `\n\nMartha's away this week, so we'll play at ${weekData.substituteHost}'s house${weekData.substituteAddress ? ` - ${weekData.substituteAddress}` : ''}.`
-                                        : '';
-                                    return `Hello Mahjong Ladies! It's time to schedule our games for the ${weekName}.${hostMessage}
+                                {`Hello Mahjong Ladies! It's time to schedule our games for the ${weekName}.
 
 Please click the link below to let me know your availability:
 
-${shareLink}`;
-                                })()}
+${shareLink}`}
                             </div>
                             <button className="btn btn-primary" onClick={copyLink}>
                                 📋 Copy Link & Message
@@ -1567,10 +1341,6 @@ ${shareLink}`;
                                             setWeekName(data.name);
                                             setTimeSlots(data.timeSlots);
                                             setPlayers(data.players);
-                                            // Reset hosting status
-                                            setMarthaHosting(true);
-                                            setSubstituteHost('');
-                                            setHostAddress('');
                                             setShowCreateForm(true);
                                             setStep(1);
                                         }
@@ -1615,10 +1385,6 @@ ${shareLink}`;
                                             setWeekName(data.name);
                                             setTimeSlots(data.timeSlots);
                                             setPlayers(data.players);
-                                            // Reset hosting status
-                                            setMarthaHosting(true);
-                                            setSubstituteHost('');
-                                            setHostAddress('');
                                             setShowCreateForm(true);
                                             setStep(1);
                                         }
@@ -1671,22 +1437,19 @@ ${shareLink}`;
                                 Time Slot Availability
                             </h3>
 
-                            {optimization.slotAnalysis.map((sa) => {
-                                const weekData = loadFromStorage(`week_${weekId}`);
-                                const marthaHosting = weekData?.marthaHosting !== false;
-                                return (
+                            {optimization.slotAnalysis.map((sa) => (
                                 <div key={sa.slot.id} className={`slot-card ${sa.status}`}>
                                     <div className="slot-header">
                                         <span className="slot-time">
                                             {sa.slot.day} {formatTime(sa.slot.startTime)}-{formatTime(sa.slot.endTime)}
                                         </span>
                                         <span>
-                                            <span className="slot-count">{marthaHosting ? sa.count + 1 : sa.count}</span>
+                                            <span className="slot-count">{sa.count + 1}</span>
                                             <span style={{ fontSize: '20px', marginLeft: '8px' }}>{sa.rating}</span>
                                         </span>
                                     </div>
                                     <div className="slot-players">
-                                        <strong>Available:</strong> {marthaHosting ? `Martha${sa.available.length > 0 ? ', ' + sa.available.map(p => p.name.split(' ')[0]).join(', ') : ''}` : (sa.available.length > 0 ? sa.available.map(p => p.name.split(' ')[0]).join(', ') : 'None')}
+                                        <strong>Available:</strong> Martha{sa.available.length > 0 ? ', ' + sa.available.map(p => p.name.split(' ')[0]).join(', ') : ''}
                                     </div>
                                     {sa.maybe.length > 0 && (
                                         <div className="slot-players" style={{ marginTop: '6px' }}>
@@ -1707,8 +1470,7 @@ ${shareLink}`;
                                         {sa.description}
                                     </div>
                                 </div>
-                                );
-                            })}
+                            ))}
                         </div>
 
                         <div className="card">
@@ -2082,16 +1844,12 @@ ${shareLink}`;
                                     const weekData = loadFromStorage(`week_${weekId}`);
                                     if (!weekData) return '';
                                     
-                                    const hostMessage = weekData.marthaHosting === false && weekData.substituteHost 
-                                        ? `\nMartha's away this week, so we'll play at ${weekData.substituteHost}'s house${weekData.substituteAddress ? ` - ${weekData.substituteAddress}` : ''}.\n`
-                                        : '';
-                                    
-                                    let message = `Hi everyone! Here's our mahjong schedule for the ${weekData.name}:${hostMessage}\n`;
+                                    let message = `Hi everyone! Here's our mahjong schedule for the ${weekData.name}:\n\n`;
                                     
                                     finalPlan.sessions.forEach((session, idx) => {
                                         const day = session.slot.day;
                                         const time = `${formatTime(session.slot.startTime)}-${formatTime(session.slot.endTime)}`;
-                                        const playerNames = weekData.marthaHosting !== false ? ['Martha'] : [];
+                                        const playerNames = ['Martha'];
                                         
                                         session.tables.forEach(table => {
                                             table.forEach(player => {
@@ -2117,16 +1875,12 @@ ${shareLink}`;
                                     const weekData = loadFromStorage(`week_${weekId}`);
                                     if (!weekData) return;
                                     
-                                    const hostMessage = weekData.marthaHosting === false && weekData.substituteHost 
-                                        ? `\nMartha's away this week, so we'll play at ${weekData.substituteHost}'s house${weekData.substituteAddress ? ` - ${weekData.substituteAddress}` : ''}.\n`
-                                        : '';
-                                    
-                                    let message = `Hi everyone! Here's our mahjong schedule for the ${weekData.name}:${hostMessage}\n`;
+                                    let message = `Hi everyone! Here's our mahjong schedule for the ${weekData.name}:\n\n`;
                                     
                                     finalPlan.sessions.forEach((session, idx) => {
                                         const day = session.slot.day;
                                         const time = `${formatTime(session.slot.startTime)}-${formatTime(session.slot.endTime)}`;
-                                        const playerNames = weekData.marthaHosting !== false ? ['Martha'] : [];
+                                        const playerNames = ['Martha'];
                                         
                                         session.tables.forEach(table => {
                                             table.forEach(player => {
